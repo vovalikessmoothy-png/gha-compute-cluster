@@ -1,0 +1,70 @@
+name: oneshot-inference
+
+# Как передаётся задача:
+#   POST /repos/OWNER/REPO/dispatches
+#   { "event_type": "infer",
+#     "client_payload": { "job_id": "abc", "model": "qwen2.5:3b",
+#                         "prompt": "...", "callback": "https://gw.example/cb" } }
+# Как возвращается ответ:
+#   1) callback webhook (Cloudflare Worker) — если передан callback URL
+#   2) всегда — artifact result-<job_id>.json (можно скачать по API)
+
+on:
+  repository_dispatch:
+    types: [infer]
+  workflow_dispatch:
+    inputs:
+      model:   { description: "ollama model tag", default: "qwen2.5:3b" }
+      prompt:  { description: "prompt text",      default: "Say hi in one word" }
+
+permissions:
+  contents: read
+
+jobs:
+  infer:
+    runs-on: ubuntu-latest          # 2 vCPU / 7 GB RAM / 14 GB SSD
+    timeout-minutes: 15
+    env:
+      MODEL:    ${{ github.event.client_payload.model    || inputs.model  }}
+      PROMPT:   ${{ github.event.client_payload.prompt   || inputs.prompt }}
+      JOB_ID:   ${{ github.event.client_payload.job_id   || github.run_id }}
+      CALLBACK: ${{ github.event.client_payload.callback || '' }}
+    steps:
+      - name: Install ollama
+        run: curl -fsSL https://ollama.com/install.sh | sh
+
+      - name: Start server + pull model
+        run: |
+          ollama serve > /tmp/ollama.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf localhost:11434 && break; sleep 1; done
+          ollama pull "$MODEL"
+
+      - name: Run inference
+        id: run
+        run: |
+          START=$(date +%s)
+          RESP=$(curl -s localhost:11434/api/generate \
+            -d "$(jq -n --arg m "$MODEL" --arg p "$PROMPT" \
+                 '{model:$m, prompt:$p, stream:false}')")
+          END=$(date +%s)
+          echo "$RESP" | jq -n \
+            --argjson r "$RESP" \
+            --arg job "$JOB_ID" \
+            --arg ms "$(( (END-START)*1000 ))" \
+            '{job_id:$job, latency_ms:($ms|tonumber), text:$r.response, model:$r.model}' \
+            > result.json
+          cat result.json
+
+      - name: Callback (return answer)
+        if: env.CALLBACK != ''
+        run: |
+          curl -s -X POST "$CALLBACK" \
+            -H 'content-type: application/json' \
+            --data-binary @result.json || echo "callback failed (artifact still available)"
+
+      - name: Upload artifact (fallback channel)
+        uses: actions/upload-artifact@v4
+        with:
+          name: result-${{ env.JOB_ID }}
+          path: result.json
+          retention-days: 1
