@@ -1,0 +1,10 @@
+name = "gha-cluster-api"
+main = "worker.js"
+compatibility_date = "2024-11-01"
+
+# Секрет: wrangler secret put QUEUE_KEY
+# KV: создать и подставить id
+kv_namespaces = [
+  { binding = "QUEUE",   id = "REPLACE_QUEUE_KV_ID" },
+  { binding = "RESULTS", id = "REPLACE_RESULTS_KV_ID" },
+]
