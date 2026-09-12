@@ -1,46 +1,15 @@
-name: warm-pool
-
-# Долгоживущий воркер: модель грузится ОДИН раз, потом в цикле тянет задачи
-# из очереди (Cloudflare KV/Queue) и постит ответы обратно. Убирает холодный
-# старт — латентность задачи = poll + инференс, а не 30-60с на pull образа.
+# DEPRECATED — заменён на worker.yml (Python-профили + pull-очередь).
+# Старая ollama-версия удалена. Используй .github/workflows/worker.yml.
+name: warm-pool (deprecated)
 
 on:
   workflow_dispatch:
-    inputs:
-      model:       { description: "model tag",          default: "qwen2.5:3b" }
-      queue_url:   { description: "GET next-job URL",    required: true }
-      minutes:     { description: "lifetime (<350)",     default: "300" }
 
 permissions:
   contents: read
 
 jobs:
-  worker:
+  notice:
     runs-on: ubuntu-latest
-    timeout-minutes: 355
     steps:
-      - name: Install + warm model
-        run: |
-          curl -fsSL https://ollama.com/install.sh | sh
-          ollama serve > /tmp/ollama.log 2>&1 &
-          for i in $(seq 1 30); do curl -sf localhost:11434 && break; sleep 1; done
-          ollama pull "${{ inputs.model }}"
-          ollama run "${{ inputs.model }}" "warmup" > /dev/null   # грузим в RAM
-
-      - name: Poll loop
-        env:
-          MODEL: ${{ inputs.model }}
-          Q:     ${{ inputs.queue_url }}
-          MINS:  ${{ inputs.minutes }}
-        run: |
-          END=$(( $(date +%s) + MINS*60 ))
-          while [ "$(date +%s)" -lt "$END" ]; do
-            JOB=$(curl -s "$Q")                       # {job_id, prompt, callback} или пусто
-            if [ -z "$JOB" ] || [ "$JOB" = "null" ]; then sleep 2; continue; fi
-            P=$(echo "$JOB" | jq -r .prompt)
-            CB=$(echo "$JOB" | jq -r .callback)
-            R=$(curl -s localhost:11434/api/generate \
-                 -d "$(jq -n --arg m "$MODEL" --arg p "$P" '{model:$m,prompt:$p,stream:false}')")
-            echo "$JOB" | jq --argjson r "$R" '{job_id, text:$r.response}' \
-              | curl -s -X POST "$CB" -H 'content-type: application/json' --data-binary @-
-          done
+      - run: echo "Deprecated. Use worker.yml (warm-pool with Python profiles)."
