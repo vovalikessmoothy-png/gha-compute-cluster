@@ -1,0 +1,27 @@
+name: test-opencode
+
+on:
+  workflow_dispatch:
+    inputs:
+      prompt:
+        description: "Prompt for opencode"
+        required: true
+        default: "Search the web for 'github actions self-hosted runners' and summarize the first 3 results"
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install opencode
+        run: curl -fsSL https://opencode.ai/install | bash
+
+      - name: Run opencode
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+        run: |
+          opencode run "${{ github.event.inputs.prompt }}" --print-logs

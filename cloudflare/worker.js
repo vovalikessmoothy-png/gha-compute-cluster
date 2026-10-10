@@ -4,6 +4,7 @@
 //   GET  /pull?profile=embed          -> задача | 204    warm-воркер тянет задачу
 //   POST /result    { id, result }                        воркер возвращает результат
 //   GET  /result/{id}                 -> { status,result} клиент забирает результат
+//   GET  /healthz                      -> { status, ... }  готовность кластера (без auth)
 // Хранилище: KV namespace QUEUE (очередь по профилю) и RESULTS (результаты).
 // Авторизация воркеров/клиентов: заголовок Authorization: Bearer <QUEUE_KEY>.
 
@@ -20,6 +21,30 @@ export default {
   async fetch(req, env) {
     const url = new URL(req.url);
     const p = url.pathname;
+
+    // --- health check: доступен без авторизации ---
+    if (p === "/healthz" && req.method === "GET") {
+      try {
+        // Проверяем доступность KV: пробуем прочитать тестовый ключ
+        const kvCheck = await env.QUEUE.get("__health_check__");
+        // Если KV доступен (даже если ключ не найден), кластер готов
+        return enc({
+          status: "ok",
+          service: "gha-compute-cluster",
+          ready: true,
+          kv_available: true,
+          timestamp: new Date().toISOString(),
+        });
+      } catch {
+        return enc({
+          status: "error",
+          service: "gha-compute-cluster",
+          ready: false,
+          kv_available: false,
+          timestamp: new Date().toISOString(),
+        });
+      }
+    }
 
     if (!auth(req, env)) return new Response("unauthorized", { status: 401 });
 

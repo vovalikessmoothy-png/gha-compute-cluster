@@ -51,9 +51,36 @@
 батч-инференс лёгких моделей (эмбеддинги, классификация, реранк, ASR, суммаризация
 короткими LLM), рендер, кроулинг, перекодирование, массовые расчёты.
 
+## Health Check
+
+Кластер предоставляет health эндпоинт для проверки готовности принимать задачи:
+
+```
+GET /healthz
+```
+
+**Ответ:**
+```json
+{
+  "status": "ok",
+  "service": "gha-compute-cluster",
+  "ready": true,
+  "kv_available": true,
+  "timestamp": "2024-01-01T00:00:00.000Z"
+}
+```
+
+- `ready: true` — кластер готов принимать задачи
+- `kv_available: true` — KV хранилище доступно (проверяется тестовым чтением)
+
+**Использование:**
+- Мониторинг готовности кластера
+- Load balancer health checks
+- Проверка перед отправкой задач
+
 ## Каталог
 - `.github/workflows/worker.yml` — тёплый воркер-loop (warm-pool).
 - `.github/workflows/oneshot.yml` — one-shot job по dispatch.
-- `cloudflare/worker.js` — API-шлюз + очередь на KV.
+- `cloudflare/worker.js` — API-шлюз + очередь на KV + health check.
 - `MODELS.md` — матрица моделей под 7 ГБ RAM / CPU и их назначение.
 - `SETUP.md` — как поднять с нуля.
